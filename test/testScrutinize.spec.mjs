@@ -16,7 +16,8 @@ import assert from 'assert';
   Note also: the --tags "not:llm" filter seems to work but the
     --tags "is:llm" filter advertised in the mocha-tags documentation
     seems to have a bug.  Mocha-tags seems to be unmaintained, but
-    there doesn't seem to be
+    there doesn't seem to be a better option that doesn't bring too
+    much other stuff along.
   */
 
 

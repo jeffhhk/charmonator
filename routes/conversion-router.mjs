@@ -101,6 +101,7 @@ router.post('/image', async (req, res) => {
       description,
       intent,
       graphic_instructions,
+      ocr_instructions,
       preceding_content,
       preceding_context,
       model,
@@ -126,7 +127,7 @@ router.post('/image', async (req, res) => {
       `You are an AI that precisely transcribes images into github-formatted markdown under user guidance.\n\n` +
       `For text formatted into multiple columns, correctly sequence the content of the columns into the logical order for reading.` +
       `You also try to determine if the current page is likely the *first page of a document*.\n\n` +
-      `Return a valid JSON object with keys "markdown" (string) and "isFirstPage" (boolean).\n\n` +
+      `Return a valid JSON object with keys "markdown" (string), "isFirstPage" (boolean), and "imageLegibility" (number).\n\n` +
       `If the user requests a description, add a "description" field (string) as a short description of the page.\n\n` +
       `If the user requests tagging, add a "tags" field (array of strings) providing the user-defined tags that "describe" this page.\n\n` +
       `Beyond the image provided, the user may provide additional context to help interpret the image.\n\n` +
@@ -139,7 +140,9 @@ router.post('/image', async (req, res) => {
     // Build user request text
     let userText = `Please accurately transcribe this image into well-structured markdown word for word.  Also decide if this is likely the first page of a document. If there are tables, preserve tabular structure using github-formatted-markdown tables when possible. When proper preservation of the structure as a table is not possible, reformat the content to preserve information and understanding as precisely as possible.\n\n`;
 
-    userText += `Output must be raw JSON with at least { "markdown": "...", "isFirstPage": ... }\n\n`;
+    userText += `Output must be raw JSON with at least { "markdown": "...", "isFirstPage": ..., "imageLegibility": ... }\n\n`;
+
+    userText += "Please rate the legibility of the text in this image on a scale from 0 to 1, and record in the field \"imageLegibility\", alongside \"isFirstPage\".  Example: {... \"imageQuality\":0.543, ...}"
 
     if (description) {
       userText += `**Context: High-level user-provided description**: ${description}\n\n`;
@@ -149,6 +152,10 @@ router.post('/image', async (req, res) => {
     }
     if (graphic_instructions) {
       userText += `**Additional instructions for graphics**: ${graphic_instructions}\n\n`;
+    }
+    if (ocr_instructions) {
+      userText += `**Additional instructions for transcription**: ${ocr_instructions}\n\n`;
+      console.log({"event":"prompt template", ocr_instructions})
     }
     if (preceding_content) {
       userText += `**Context: Markdown from transcribing the preceding page**:\n${preceding_content}\n\n`;
@@ -164,6 +171,7 @@ router.post('/image', async (req, res) => {
     if (tags) {
       userText += `**The user also requests tagging with the following tags** (according to their definitions):\n`;
       for (const [tagName, tagDef] of Object.entries(tags)) {
+        //console.log(`- Tag "${tagName}": ${tagDef}\n`);
         userText += `- Tag "${tagName}": ${tagDef}\n`;
       }
       userText += `\nWhen you return the JSON, you may include "tags": ["tag1","tag2",...] if the page content meets those definitions.\n\n`;
@@ -175,7 +183,7 @@ router.post('/image', async (req, res) => {
       userText += `No short description needed.\n\n`;
     }
 
-    userText += `Return your answer as raw JSON (no code fences), with keys: "markdown", "isFirstPage", optional "description", optional "tags".\n`;
+    userText += `Return your answer as raw JSON (no code fences), with keys: "markdown", "isFirstPage", "imageLegibility", optional "description", optional "tags".\n`;
 
     // Construct user message
     const userContent = [ userText ];
@@ -225,6 +233,9 @@ router.post('/image', async (req, res) => {
       if (typeof parsed.isFirstPage !== 'boolean') {
         parsed.isFirstPage = false;
       }
+      // if (typeof parsed.imageLegibility !== 'number') {
+      //   parsed.imageLegibility = false;
+      // }
     } catch (err) {
       console.warn("Failed to parse JSON from assistant. Using fallback.");
       parsed.markdown = textOutput;
@@ -233,7 +244,8 @@ router.post('/image', async (req, res) => {
 
     const responsePayload = {
       markdown: parsed.markdown,
-      isFirstPage: parsed.isFirstPage
+      isFirstPage: parsed.isFirstPage,
+      imageLegibility: parsed.imageLegibility,
     };
 
     if (describe) {
