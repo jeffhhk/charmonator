@@ -3,6 +3,7 @@ import express from 'express';
 import { fetchChatModel } from '../lib/core.mjs';
 import { TranscriptFragment } from '../lib/transcript.mjs';
 import { FunctionTool } from '../lib/function.mjs';
+import Ajv from 'ajv';
 
 const router = express.Router();
 
@@ -15,7 +16,6 @@ router.post('/extension', async (req, res) => {
       temperature,
       transcript: transcriptJson,
       tools,
-      // New: Accept an "options" object that can contain response_format, stream, etc.
       options
     } = req.body;
 
@@ -56,16 +56,42 @@ router.post('/extension', async (req, res) => {
     // If no options object was provided, default to empty
     const invocationOptions = options || {};
 
-    // Generate response
-    const suffix = await chatModel.extendTranscript(
+    const numAttempts = invocationOptions.num_attempts_to_correct_schema || 0;
+
+    let validResponse = null;
+    let suffix = null;
+    for (let attempt = 0; attempt < numAttempts; attempt++) {
+    suffix = await chatModel.extendTranscript(
       incomingTranscript,
       null,
       null,
       invocationOptions
     );
+    const schema = invocationOptions.response_format.json_schema.schema;
+    const data = JSON.parse(suffix.toJSON().messages[0].content)
+      const isValid = validateAgainstSchema(data, schema);
+      if (isValid) {
+        validResponse = suffix.toJSON();
+        break;
+      } else if (attempt < (numAttempts - 1)) {
+        const incorrectResponse = JSON.stringify(suffix.toJSON(), null, 2);
+        invocationOptions.repairs = `
+          We have tried to use Structured Output to decode the following JSON Response.
+          However, the Response does not yet correspond to its JsonSchema.
+          Fix the Response so that it is fully valid according to JsonSchema, while preserving as much of its content as is reasonably possible.
+          <Response>
+          \`\`\`json
+          ${incorrectResponse}
+          \`\`\`
+          </Response>
+        `;
+    }
+    }
 
-    // Return the suffix as JSON
-    res.json(suffix.toJSON());
+    if (!validResponse) {
+      console.warn('The response could not be validated after multiple attempts.');
+    }
+    res.json(validResponse || suffix.toJSON());
 
   } catch (error) {
     console.error('Error extending transcript:', error);
@@ -76,5 +102,11 @@ router.post('/extension', async (req, res) => {
     });
   }
 });
+
+function validateAgainstSchema(response, schema) {
+  const ajv = new Ajv();
+  const validate = ajv.compile(schema);
+  return validate(response);
+}
 
 export default router;
