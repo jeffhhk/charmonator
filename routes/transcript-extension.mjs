@@ -61,14 +61,14 @@ router.post('/extension', async (req, res) => {
     let validResponse = null;
     let suffix = null;
     for (let attempt = 0; attempt < numAttempts; attempt++) {
-    suffix = await chatModel.extendTranscript(
-      incomingTranscript,
-      null,
-      null,
-      invocationOptions
-    );
-    const schema = invocationOptions.response_format.json_schema.schema;
-    const data = JSON.parse(suffix.toJSON().messages[0].content)
+      suffix = await chatModel.extendTranscript(
+        incomingTranscript,
+        null,
+        null,
+        invocationOptions
+      );
+      const schema = invocationOptions.response_format.json_schema.schema;
+      const data = JSON.parse(suffix.toJSON().messages[0].content)
       const isValid = validateAgainstSchema(data, schema);
       if (isValid) {
         validResponse = suffix.toJSON();
@@ -85,7 +85,7 @@ router.post('/extension', async (req, res) => {
           \`\`\`
           </Response>
         `;
-    }
+      }
     }
 
     if (!validResponse) {
